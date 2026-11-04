@@ -1,7 +1,7 @@
 import { useState } from "react";
 import "./App.css";
 
-const API = "http://localhost:5000/api";
+const API = "https://bulk-mail-app-krf3.onrender.com/api";
 
 function App() {
   const [page, setPage] = useState("send");
