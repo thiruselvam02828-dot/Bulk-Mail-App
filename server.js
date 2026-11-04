@@ -2,7 +2,6 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const nodemailer = require("nodemailer");
 
 const app = express();
 app.use(cors());
@@ -24,15 +23,33 @@ const mailSchema = new mongoose.Schema({
 });
 const Mail = mongoose.model("Mail", mailSchema);
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-});
-
 const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+// Sends one mail through Brevo's HTTPS API (works on hosts that block SMTP ports)
+async function sendWithBrevo(to, subject, text) {
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "api-key": process.env.BREVO_API_KEY,
+    },
+    body: JSON.stringify({
+      sender: {
+        name: process.env.SENDER_NAME || "Bulk Mail",
+        email: process.env.SENDER_EMAIL,
+      },
+      to: [{ email: to }],
+      subject,
+      textContent: text,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Brevo ${res.status}: ${errText}`);
+  }
+}
 
 app.post("/api/send", async (req, res) => {
   const { subject, body, recipients } = req.body;
@@ -51,12 +68,7 @@ app.post("/api/send", async (req, res) => {
 
   for (const to of valid) {
     try {
-      await transporter.sendMail({
-        from: process.env.GMAIL_USER,
-        to,
-        subject,
-        text: body,
-      });
+      await sendWithBrevo(to, subject, body);
       sentCount++;
     } catch (err) {
       console.error(`Failed to send to ${to}:`, err.message);
